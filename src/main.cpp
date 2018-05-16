@@ -27,13 +27,14 @@ private:
 Image::Image(const char *path)
 {
     struct stat sb;
-    int fd;
     if (stat(path, &sb) == -1) {
         perror("stat");
         throw std::runtime_error("Cannot stat file");
     }
     len = sb.st_size;
-    if ((fd = open(path, O_RDWR)) == -1) {
+
+    int fd = open(path, O_RDWR);
+    if (fd == -1) {
         perror("open");
         throw std::runtime_error("Cannot open file");
     }
@@ -41,8 +42,13 @@ Image::Image(const char *path)
      * TODO: Decide if we will map it at 0 and use base_offset in
      * later references, or map with base_offset and be happy later.
      */
-    image = (uint8_t *)mmap(NULL, len, PROT_READ | PROT_WRITE,
+    image = (uint8_t *) mmap(NULL, len, PROT_READ | PROT_WRITE,
             MAP_SHARED, fd, 0);
+    if (image == (void *) -1) {
+        perror("mmap");
+        throw std::runtime_error("Cannot map file");
+    }
+
     close(fd);
 }
 
