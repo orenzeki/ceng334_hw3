@@ -20,16 +20,38 @@ public:
     Image(const char *path);
     ~Image();
 
+    /* 
+     * Block numbering starts at 0, with 0 being the boot block.
+     * We are not interested in the boot block, so we can say that block
+     * numbering starts at 1 and the first block is the superblock.
+     */
     uint8_t *get_block(unsigned int block) const;
     struct ext2_super_block *get_super_block() const;
     struct ext2_group_desc *get_group_desc() const;
 private:
+    /*
+     * Pointer to the mmap'ed image file. This is the pointer returned by
+     * mmap, therefore is the one to be munmap'ed in the end.
+     */
     uint8_t *image;
+    /*
+     * Size of the image file, needed by mmap and munmap.
+     */
+    size_t image_size;
+    /*
+     * Pointer to block 1, the superblock. It is at image + base_offset, we
+     * store it in another member for convenience.
+     */
     uint8_t *first_block;
-    size_t len;
+    /*
+     * Block size in bytes, retrieved from the superblock.
+     */
     unsigned int block_size;
-    struct ext2_super_block *super;
-    struct ext2_group_desc *group;
+    /*
+     * Self explanatory.
+     */
+    struct ext2_super_block *super_block;
+    struct ext2_group_desc *group_desc;
 };
 
 Image::Image(const char *path)
@@ -39,14 +61,14 @@ Image::Image(const char *path)
         perror("stat");
         throw std::runtime_error("Cannot stat file");
     }
-    len = sb.st_size;
+    image_size = sb.st_size;
 
     int fd = open(path, O_RDWR);
     if (fd == -1) {
         perror("open");
         throw std::runtime_error("Cannot open file");
     }
-    image = (uint8_t *) mmap(NULL, len, PROT_READ | PROT_WRITE,
+    image = (uint8_t *) mmap(NULL, image_size, PROT_READ | PROT_WRITE,
             MAP_SHARED, fd, 0);
     if (image == (void *) -1) {
         perror("mmap");
@@ -54,20 +76,20 @@ Image::Image(const char *path)
     }
 
     first_block = image + base_offset;
-    super = (struct ext2_super_block *) first_block;
-    if (super->s_magic != EXT2_SUPER_MAGIC) {
-        fprintf(stderr, "Not an ext2 fs\n");
+    super_block = (struct ext2_super_block *) first_block;
+    if (super_block->s_magic != EXT2_SUPER_MAGIC) {
+        std::cerr << "Not an ext2 fs\n";
         throw std::runtime_error("Invalid filesystem");
     }
-    block_size = 1024 << super->s_log_block_size;
-    group = (struct ext2_group_desc *) (first_block + block_size);
+    block_size = 1024 << super_block->s_log_block_size;
+    group_desc = (struct ext2_group_desc *) (first_block + block_size);
 
     close(fd);
 }
 
 Image::~Image()
 {
-    munmap(image, len);
+    munmap(image, image_size);
 }
 
 uint8_t *Image::get_block(unsigned int block) const
@@ -77,18 +99,18 @@ uint8_t *Image::get_block(unsigned int block) const
 
 struct ext2_super_block *Image::get_super_block() const
 {
-    return super;
+    return super_block;
 }
 
 struct ext2_group_desc *Image::get_group_desc() const
 {
-    return group;
+    return group_desc;
 }
 
 int main(int argc, char **argv)
 {
     if (argc != 2) {
-        fprintf(stderr, "Usage: %s <pathname>\n", argv[0]);
+        std::cerr << "Usage: " << argv[0] << " <pathname>\n";
         return 1;
     }
     Image img(argv[1]);
