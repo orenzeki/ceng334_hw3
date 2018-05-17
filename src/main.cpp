@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <iomanip>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -193,9 +194,13 @@ int main(int argc, char **argv)
 
     struct ext2_inode *inodes = image.get_inode_table();
     struct ext2_super_block *super = image.get_super_block();
+    auto n_deleted = 0;
     for (auto i = super->s_first_ino; i < super->s_inodes_per_group; ++i) {
         if (inodes[i].i_dtime) {
-            std::cout << inodes[i].i_dtime << '\n';
+            ++n_deleted;
+            std::cout << "file";
+            std::cout << std::setfill('0') << std::setw(2) << n_deleted;
+            std::cout << ' ' << inodes[i].i_dtime << '\n';
         }
     }
 
