@@ -12,23 +12,27 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-constexpr auto base_offset = 1024;
-constexpr auto ext2_block_size = 1024;
+constexpr auto base_offset = 1024u;
+constexpr auto ext2_block_size = 1024u;
 
 class Bitmap {
 public:
-    Bitmap(uint8_t *bmap, unsigned int block_size);
+    Bitmap(uint8_t *bmap, unsigned block_size);
 
     bool is_set(int bit) const;
     void set(int bit) const;
     void clear(int bit) const;
 private:
     uint8_t *bmap;
-    unsigned int size;
-    static constexpr auto nbits = 8 * ((int) sizeof bmap);
+    /*
+     * A bitmap occupies one block on the filesystem, so the size is
+     * same as the block size of the filesystem.
+     */
+    unsigned size;
+    static constexpr auto nbits = 8 * sizeof *bmap;
 };
 
-Bitmap::Bitmap(uint8_t *bmap, unsigned int block_size) :
+Bitmap::Bitmap(uint8_t *bmap, unsigned block_size) :
     bmap(bmap),
     size(block_size)
 {
@@ -53,7 +57,7 @@ public:
     /*
      * Use this for raw block access.
      */
-    uint8_t *get_block(unsigned int block) const;
+    uint8_t *get_block(unsigned block) const;
     Bitmap get_block_bitmap() const;
     Bitmap get_inode_bitmap() const;
     struct ext2_super_block *get_super_block() const;
@@ -76,7 +80,7 @@ private:
     /*
      * Block size in bytes, retrieved from the superblock.
      */
-    unsigned int block_size;
+    unsigned block_size;
     /*
      * Self explanatory.
      */
@@ -122,7 +126,7 @@ Image::~Image()
     munmap(image, image_size);
 }
 
-uint8_t *Image::get_block(unsigned int block) const
+uint8_t *Image::get_block(unsigned block) const
 {
     return first_block + (block - 1)*block_size;
 }
