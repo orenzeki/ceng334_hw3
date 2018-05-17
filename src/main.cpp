@@ -71,10 +71,21 @@ public:
      * Use this for raw block access.
      */
     uint8_t *get_block(unsigned block) const;
+    /*
+     * FIXME: All of our operations assume that only one block group exists
+     * in the filesystem. For the purposes of this assignment, this is OK;
+     * however at least check if this is actually the case and throw some
+     * error if we are not going to generalize our implementation.
+     */
     Bitmap get_block_bitmap() const;
     Bitmap get_inode_bitmap() const;
     struct ext2_super_block *get_super_block() const;
     struct ext2_group_desc *get_group_desc() const;
+    /*
+     * Get the inode table for the first block group.
+     * Beware that the number of inodes here is super->s_inodes_per_group.
+     */
+    struct ext2_inode *get_inode_table() const;
 private:
     /*
      * Pointer to the mmap'ed image file. This is the pointer returned by
@@ -167,29 +178,26 @@ Bitmap Image::get_inode_bitmap() const
     return Bitmap(get_block(group_desc->bg_inode_bitmap), block_size);
 }
 
+struct ext2_inode *Image::get_inode_table() const
+{
+    return (struct ext2_inode *) get_block(group_desc->bg_inode_table);
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
         std::cerr << "Usage: " << argv[0] << " <pathname>\n";
         return 1;
     }
-    Image img(argv[1]);
+    Image image(argv[1]);
 
-    struct ext2_super_block *super = img.get_super_block();
-    std::cout << super->s_blocks_count << '\n';
-    std::cout << super->s_first_ino << '\n';
-
-    Bitmap block_bitmap = img.get_block_bitmap();
-    Bitmap inode_bitmap = img.get_inode_bitmap();
-
-    for (auto i = 0u; i < super->s_blocks_count; ++i) {
-        if (block_bitmap.is_set(i)) {
-            std::cout << '+';
-        } else {
-            std::cout << '-';
+    struct ext2_inode *inodes = image.get_inode_table();
+    struct ext2_super_block *super = image.get_super_block();
+    for (auto i = super->s_first_ino; i < super->s_inodes_per_group; ++i) {
+        if (inodes[i].i_dtime) {
+            std::cout << inodes[i].i_dtime << '\n';
         }
     }
-    std::cout << '\n';
 
     return 0;
 }
