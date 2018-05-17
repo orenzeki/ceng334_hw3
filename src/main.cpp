@@ -19,9 +19,9 @@ class Bitmap {
 public:
     Bitmap(uint8_t *bmap, unsigned block_size);
 
-    bool is_set(int bit) const;
-    void set(int bit) const;
-    void clear(int bit) const;
+    bool is_set(unsigned bit) const;
+    void set(unsigned bit) const;
+    void clear(unsigned bit) const;
 private:
     uint8_t *bmap;
     /*
@@ -38,9 +38,22 @@ Bitmap::Bitmap(uint8_t *bmap, unsigned block_size) :
 {
 }
 
-bool Bitmap::is_set(int bit) const
+/*
+ * TODO: Should we add bounds checking?
+ */
+bool Bitmap::is_set(unsigned bit) const
 {
+    return bmap[bit / nbits] & (1 << (bit % nbits));
+}
 
+void Bitmap::set(unsigned bit) const
+{
+    bmap[bit / nbits] |= (1 << (bit % nbits));
+}
+
+void Bitmap::clear(unsigned bit) const
+{
+    bmap[bit / nbits] &= ~(1 << (bit % nbits));
 }
 
 class Image {
@@ -126,6 +139,9 @@ Image::~Image()
     munmap(image, image_size);
 }
 
+/*
+ * TODO: Should we add bounds checking?
+ */
 uint8_t *Image::get_block(unsigned block) const
 {
     return first_block + (block - 1)*block_size;
@@ -165,6 +181,15 @@ int main(int argc, char **argv)
 
     Bitmap block_bitmap = img.get_block_bitmap();
     Bitmap inode_bitmap = img.get_inode_bitmap();
+
+    for (auto i = 0u; i < super->s_blocks_count; ++i) {
+        if (block_bitmap.is_set(i)) {
+            std::cout << '+';
+        } else {
+            std::cout << '-';
+        }
+    }
+    std::cout << '\n';
 
     return 0;
 }
