@@ -15,6 +15,30 @@
 constexpr auto base_offset = 1024;
 constexpr auto ext2_block_size = 1024;
 
+class Bitmap {
+public:
+    Bitmap(uint8_t *bmap, unsigned int block_size);
+
+    bool is_set(int bit) const;
+    void set(int bit) const;
+    void clear(int bit) const;
+private:
+    uint8_t *bmap;
+    unsigned int size;
+    static constexpr auto nbits = 8 * ((int) sizeof bmap);
+};
+
+Bitmap::Bitmap(uint8_t *bmap, unsigned int block_size) :
+    bmap(bmap),
+    size(block_size)
+{
+}
+
+bool Bitmap::is_set(int bit) const
+{
+
+}
+
 class Image {
 public:
     Image(const char *path);
@@ -25,7 +49,13 @@ public:
      * We are not interested in the boot block, so we can say that block
      * numbering starts at 1 and the first block is the superblock.
      */
+
+    /*
+     * Use this for raw block access.
+     */
     uint8_t *get_block(unsigned int block) const;
+    Bitmap get_block_bitmap() const;
+    Bitmap get_inode_bitmap() const;
     struct ext2_super_block *get_super_block() const;
     struct ext2_group_desc *get_group_desc() const;
 private:
@@ -107,6 +137,16 @@ struct ext2_group_desc *Image::get_group_desc() const
     return group_desc;
 }
 
+Bitmap Image::get_block_bitmap() const
+{
+    return Bitmap(get_block(group_desc->bg_block_bitmap), block_size);
+}
+
+Bitmap Image::get_inode_bitmap() const
+{
+    return Bitmap(get_block(group_desc->bg_inode_bitmap), block_size);
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
@@ -119,6 +159,8 @@ int main(int argc, char **argv)
     std::cout << super->s_blocks_count << '\n';
     std::cout << super->s_first_ino << '\n';
 
+    Bitmap block_bitmap = img.get_block_bitmap();
+    Bitmap inode_bitmap = img.get_inode_bitmap();
 
     return 0;
 }
