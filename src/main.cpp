@@ -313,14 +313,21 @@ int main(int argc, char **argv)
     for (auto &file : files_deleted) {
         struct ext2_inode *inode = std::get<1>(file);
         auto blocks = get_blocks(inode, image);
-        if (std::all_of(blocks.begin(), blocks.end(), [&](unsigned block) {
+        if (std::all_of(blocks.begin(), blocks.end(), [&](const auto &block) {
                     return !block_bitmap.is_set(block); })) {
-            std::cout << std::get<0>(file) << '\n';
-
             inode->i_dtime = 0;
             image.get_inode_bitmap().set(std::get<2>(file));
-            std::for_each(blocks.begin(), blocks.end(), [&](unsigned block) {
+            std::for_each(blocks.begin(), blocks.end(), [&](const auto &block) {
                         block_bitmap.set(block); });
+        }
+    }
+
+    std::sort(files_deleted.begin(), files_deleted.end(),
+            [](const auto &a, const auto &b) {
+                return std::get<0>(a) < std::get<0>(b); });
+    for (const auto &file : files_deleted) {
+        if (std::get<1>(file)->i_dtime == 0) {
+            std::cout << std::get<0>(file) << '\n';
         }
     }
 
