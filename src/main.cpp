@@ -1,11 +1,15 @@
 #include "ext2.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <sstream>
+#include <utility>
+#include <vector>
 
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -195,14 +199,37 @@ int main(int argc, char **argv)
     struct ext2_inode *inodes = image.get_inode_table();
     struct ext2_super_block *super = image.get_super_block();
     auto n_deleted = 0;
+    std::vector<std::pair<struct ext2_inode *, std::string>> files_deleted;
     for (auto i = super->s_first_ino; i < super->s_inodes_per_group; ++i) {
         if (inodes[i].i_dtime) {
-            ++n_deleted;
-            std::cout << "file";
-            std::cout << std::setfill('0') << std::setw(2) << n_deleted;
-            std::cout << ' ' << inodes[i].i_dtime << '\n';
+            std::ostringstream filename_ss;
+            filename_ss << "file";
+            filename_ss << std::setfill('0') << std::setw(2) << ++n_deleted;
+            std::string filename = filename_ss.str();
+            std::cout << filename << ' ' << inodes[i].i_dtime << '\n';
+
+            files_deleted.emplace_back(&inodes[i], std::move(filename));
         }
     }
+
+    /*
+     * We want to recover the newest file first.
+     * Reason is this:
+     * There may be multiple deleted files occupying the same blocks.
+     * This may happen in the case that a file is created, deleted, another one
+     * is created using the same blocks and that one is deleted too.
+     * In this case, the requirements document states that the newest file
+     * should be recovered. If we recover the newest file first and mark its
+     * blocks as allocated, for an older file using the same blocks we will
+     * find that its blocks are already allocated so we will not attempt to
+     * restore it.
+     * Long story short: We sort the vector according to the creation time
+     * of the inodes, in descending order.
+     */
+    std::sort(files_deleted.begin(), files_deleted.end(),
+            [](const auto &a, const auto &b) {
+                return a.first->i_ctime > b.first->i_ctime;
+    });
 
     return 0;
 }
