@@ -188,17 +188,21 @@ struct ext2_inode *Image::get_inode_table() const
     return (struct ext2_inode *) get_block(group_desc->bg_inode_table);
 }
 
-auto find_deleted_inodes(const Image &image)
+auto find_deleted_files(const Image &image)
 {
-    std::vector<struct ext2_inode *> inodes_deleted;
+    std::vector<std::pair<std::string, struct ext2_inode *>> files_deleted;
     struct ext2_inode *inodes = image.get_inode_table();
     struct ext2_super_block *super = image.get_super_block();
+    auto n_deleted = 0;
     for (auto i = super->s_first_ino; i < super->s_inodes_per_group; ++i) {
         if (inodes[i].i_dtime) {
-            inodes_deleted.push_back(&inodes[i]);
+            std::ostringstream filename_ss;
+            filename_ss << "file";
+            filename_ss << std::setfill('0') << std::setw(2) << ++n_deleted;
+            files_deleted.emplace_back(filename_ss.str(), &inodes[i]);
         }
     }
-    return inodes_deleted;
+    return files_deleted;
 }
 
 int main(int argc, char **argv)
@@ -209,7 +213,16 @@ int main(int argc, char **argv)
     }
     Image image(argv[1]);
 
-    auto inodes_deleted = find_deleted_inodes(image);
+    auto files_deleted = find_deleted_files(image);
+    /*
+     * Output (for each deleted file):
+     * filename deletion_time num_blocks
+     */
+    for (const auto &file : files_deleted) {
+        std::cout << file.first << ' ' << file.second->i_dtime << ' ' <<
+            file.second->i_blocks/2 << '\n';
+    }
+
     /*
      * We sort the vector according to the deletion time
      * of the inodes. The reason is as follows:
@@ -224,33 +237,10 @@ int main(int argc, char **argv)
      * we will find that its blocks are already allocated so we will not attempt
      * to restore it.
      */
-    std::sort(inodes_deleted.begin(), inodes_deleted.end(),
+    std::sort(files_deleted.begin(), files_deleted.end(),
             [](const auto &a, const auto &b) {
-                return a->i_dtime < b->i_dtime;
+                return a.second->i_dtime > b.second->i_dtime;
     });
-
-    /*
-     * XXX: We name the files here. I don't like to create another vector
-     * to do this stuff here but I can't think of a better design for now.
-     * I'll just implement the critical parts and refactor later if necessary.
-     */
-    auto n_deleted = 0;
-    std::vector<std::pair<std::string, struct ext2_inode *>> files_deleted;
-    for (auto &inode : inodes_deleted) {
-        std::ostringstream filename_ss;
-        filename_ss << "file";
-        filename_ss << std::setfill('0') << std::setw(2) << ++n_deleted;
-        files_deleted.emplace_back(filename_ss.str(), inode);
-    }
-
-    /*
-     * Output (for each deleted file):
-     * filename deletion_time num_blocks
-     */
-    for (auto &file : files_deleted) {
-        std::cout << file.first << ' ' << file.second->i_dtime << ' ' <<
-            file.second->i_blocks/2 << '\n';
-    }
 
     return 0;
 }
