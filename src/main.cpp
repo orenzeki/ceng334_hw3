@@ -273,25 +273,6 @@ auto get_blocks(struct ext2_inode *inode, const Image &image)
     return blocks;
 }
 
-bool is_free(const std::vector<unsigned> &blocks, const Image &image)
-{
-    auto block_bitmap = image.get_block_bitmap();
-    for (const auto &block : blocks) {
-        if (block_bitmap.is_set(block)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-void mark_allocated(const std::vector<unsigned> &blocks, Image &image)
-{
-    auto block_bitmap = image.get_block_bitmap();
-    for (const auto &block : blocks) {
-        block_bitmap.set(block);
-    }
-}
-
 int main(int argc, char **argv)
 {
     if (argc != 2) {
@@ -326,18 +307,20 @@ int main(int argc, char **argv)
      */
     std::sort(files_deleted.begin(), files_deleted.end(),
             [](const auto &a, const auto &b) {
-                return std::get<1>(a)->i_dtime > std::get<1>(b)->i_dtime;
-    });
+            return std::get<1>(a)->i_dtime > std::get<1>(b)->i_dtime; });
 
+    auto block_bitmap = image.get_block_bitmap();
     for (auto &file : files_deleted) {
         struct ext2_inode *inode = std::get<1>(file);
         auto blocks = get_blocks(inode, image);
-        if (is_free(blocks, image)) {
+        if (std::all_of(blocks.begin(), blocks.end(), [&](unsigned block) {
+                    return !block_bitmap.is_set(block); })) {
             std::cout << std::get<0>(file) << '\n';
 
             inode->i_dtime = 0;
             image.get_inode_bitmap().set(std::get<2>(file));
-            mark_allocated(blocks, image);
+            std::for_each(blocks.begin(), blocks.end(), [&](unsigned block) {
+                        block_bitmap.set(block); });
         }
     }
 
