@@ -19,6 +19,7 @@
 
 constexpr auto base_offset = 1024u;
 constexpr auto ext2_block_size = 1024u;
+constexpr auto ext2_n_direct = 12u;
 
 class Bitmap {
 public:
@@ -72,6 +73,7 @@ public:
      * numbering starts at 1 and the first block is the superblock.
      */
 
+    auto get_block_size() const;
     /*
      * Use this for raw block access.
      */
@@ -153,6 +155,11 @@ Image::Image(const char *path)
 Image::~Image()
 {
     munmap(image, image_size);
+}
+
+auto Image::get_block_size() const
+{
+    return block_size;
 }
 
 /*
@@ -241,6 +248,20 @@ int main(int argc, char **argv)
             [](const auto &a, const auto &b) {
                 return a.second->i_dtime > b.second->i_dtime;
     });
+
+    Bitmap block_bitmap = image.get_block_bitmap();
+    for (auto &file : files_deleted) {
+        struct ext2_inode *inode = file.second;
+        auto n_blocks = inode->i_blocks/2;
+
+        auto n_direct = std::max(ext2_n_direct, n_blocks);
+        auto recoverable = true;
+        for (auto i = 0u; recoverable && i < n_direct; ++i) {
+            if (block_bitmap.is_set(inode->i_block[i])) {
+                recoverable = false;
+            }
+        }
+    }
 
     return 0;
 }
