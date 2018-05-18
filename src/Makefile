@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS=-Wall -std=c++14 -Og -ggdb
+CXXFLAGS=-Wall -std=c++14 -O0 -ggdb
 
 .PHONY:
 all: recover
