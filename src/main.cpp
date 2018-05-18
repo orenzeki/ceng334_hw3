@@ -227,8 +227,8 @@ int main(int argc, char **argv)
      * filename deletion_time num_blocks
      */
     for (const auto &file : files_deleted) {
-        std::cout << std::get<0>(file) << ' ' << std::get<1>(file)->i_dtime << ' ' <<
-            std::get<1>(file)->i_blocks/2 << '\n';
+        std::cout << std::get<0>(file) << ' ' << std::get<1>(file)->i_dtime <<
+            ' ' << std::get<1>(file)->i_blocks/2 << '\n';
     }
 
     /*
