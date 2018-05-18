@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <sstream>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -197,7 +198,7 @@ struct ext2_inode *Image::get_inode_table() const
 
 auto find_deleted_files(const Image &image)
 {
-    std::vector<std::pair<std::string, struct ext2_inode *>> files_deleted;
+    std::vector<std::tuple<std::string, struct ext2_inode *, unsigned>> files_deleted;
     struct ext2_inode *inodes = image.get_inode_table();
     struct ext2_super_block *super = image.get_super_block();
     auto n_deleted = 0;
@@ -206,7 +207,7 @@ auto find_deleted_files(const Image &image)
             std::ostringstream filename_ss;
             filename_ss << "file";
             filename_ss << std::setfill('0') << std::setw(2) << ++n_deleted;
-            files_deleted.emplace_back(filename_ss.str(), &inodes[i]);
+            files_deleted.emplace_back(filename_ss.str(), &inodes[i], i);
         }
     }
     return files_deleted;
@@ -226,8 +227,8 @@ int main(int argc, char **argv)
      * filename deletion_time num_blocks
      */
     for (const auto &file : files_deleted) {
-        std::cout << file.first << ' ' << file.second->i_dtime << ' ' <<
-            file.second->i_blocks/2 << '\n';
+        std::cout << std::get<0>(file) << ' ' << std::get<1>(file)->i_dtime << ' ' <<
+            std::get<1>(file)->i_blocks/2 << '\n';
     }
 
     /*
@@ -246,12 +247,13 @@ int main(int argc, char **argv)
      */
     std::sort(files_deleted.begin(), files_deleted.end(),
             [](const auto &a, const auto &b) {
-                return a.second->i_dtime > b.second->i_dtime;
+                return std::get<1>(a)->i_dtime > std::get<1>(b)->i_dtime;
     });
 
     Bitmap block_bitmap = image.get_block_bitmap();
+    Bitmap inode_bitmap = image.get_inode_bitmap();
     for (auto &file : files_deleted) {
-        struct ext2_inode *inode = file.second;
+        struct ext2_inode *inode = std::get<1>(file);
         auto n_blocks = inode->i_blocks/2;
 
         auto n_direct = std::max(ext2_n_direct, n_blocks);
