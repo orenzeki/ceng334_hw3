@@ -188,6 +188,19 @@ struct ext2_inode *Image::get_inode_table() const
     return (struct ext2_inode *) get_block(group_desc->bg_inode_table);
 }
 
+auto find_deleted_inodes(const Image &image)
+{
+    std::vector<struct ext2_inode *> inodes_deleted;
+    struct ext2_inode *inodes = image.get_inode_table();
+    struct ext2_super_block *super = image.get_super_block();
+    for (auto i = super->s_first_ino; i < super->s_inodes_per_group; ++i) {
+        if (inodes[i].i_dtime) {
+            inodes_deleted.push_back(&inodes[i]);
+        }
+    }
+    return inodes_deleted;
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
@@ -196,40 +209,48 @@ int main(int argc, char **argv)
     }
     Image image(argv[1]);
 
-    struct ext2_inode *inodes = image.get_inode_table();
-    struct ext2_super_block *super = image.get_super_block();
-    auto n_deleted = 0;
-    std::vector<std::pair<struct ext2_inode *, std::string>> files_deleted;
-    for (auto i = super->s_first_ino; i < super->s_inodes_per_group; ++i) {
-        if (inodes[i].i_dtime) {
-            std::ostringstream filename_ss;
-            filename_ss << "file";
-            filename_ss << std::setfill('0') << std::setw(2) << ++n_deleted;
-            std::string filename = filename_ss.str();
-            std::cout << filename << ' ' << inodes[i].i_dtime << '\n';
+    auto inodes_deleted = find_deleted_inodes(image);
+    /*
+     * We sort the vector according to the deletion time
+     * of the inodes. The reason is as follows:
+     * There may be multiple deleted files occupying the same blocks.
+     * This only happens in the case that a file is created, deleted, another
+     * one is created using the same blocks and that one is deleted too.
+     * In this case, the requirements document states that the newest file
+     * should be recovered. In this case the newest file also has to be the
+     * deleted later than the older file.
+     * If we recover the file that is deleted last (hence mark its blocks as
+     * allocated), for an older file using the same blocks
+     * we will find that its blocks are already allocated so we will not attempt
+     * to restore it.
+     */
+    std::sort(inodes_deleted.begin(), inodes_deleted.end(),
+            [](const auto &a, const auto &b) {
+                return a->i_dtime < b->i_dtime;
+    });
 
-            files_deleted.emplace_back(&inodes[i], std::move(filename));
-        }
+    /*
+     * XXX: We name the files here. I don't like to create another vector
+     * to do this stuff here but I can't think of a better design for now.
+     * I'll just implement the critical parts and refactor later if necessary.
+     */
+    auto n_deleted = 0;
+    std::vector<std::pair<std::string, struct ext2_inode *>> files_deleted;
+    for (auto &inode : inodes_deleted) {
+        std::ostringstream filename_ss;
+        filename_ss << "file";
+        filename_ss << std::setfill('0') << std::setw(2) << ++n_deleted;
+        files_deleted.emplace_back(filename_ss.str(), inode);
     }
 
     /*
-     * We want to recover the newest file first.
-     * Reason is this:
-     * There may be multiple deleted files occupying the same blocks.
-     * This may happen in the case that a file is created, deleted, another one
-     * is created using the same blocks and that one is deleted too.
-     * In this case, the requirements document states that the newest file
-     * should be recovered. If we recover the newest file first and mark its
-     * blocks as allocated, for an older file using the same blocks we will
-     * find that its blocks are already allocated so we will not attempt to
-     * restore it.
-     * Long story short: We sort the vector according to the creation time
-     * of the inodes, in descending order.
+     * Output (for each deleted file):
+     * filename deletion_time num_blocks
      */
-    std::sort(files_deleted.begin(), files_deleted.end(),
-            [](const auto &a, const auto &b) {
-                return a.first->i_ctime > b.first->i_ctime;
-    });
+    for (auto &file : files_deleted) {
+        std::cout << file.first << ' ' << file.second->i_dtime << ' ' <<
+            file.second->i_blocks/2 << '\n';
+    }
 
     return 0;
 }
