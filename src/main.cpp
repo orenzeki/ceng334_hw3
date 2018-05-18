@@ -213,6 +213,76 @@ auto find_deleted_files(const Image &image)
     return files_deleted;
 }
 
+/*
+ * TODO: This function is a mess. The code duplication seems to be a problem.
+ * Come up with a better design or refactor this shit to remove fix code duplication.
+ */
+bool is_recoverable(struct ext2_inode *inode, const Image &image)
+{
+    auto block_bitmap = image.get_block_bitmap();
+    auto recoverable = true;
+
+    /*
+     * Check the direct blocks.
+     */
+    for (auto i = 0u; recoverable && i < ext2_n_direct && inode->i_block[i]; ++i) {
+        if (block_bitmap.is_set(inode->i_block[i])) {
+            recoverable = false;
+        }
+    }
+
+    /*
+     * Check the single indirect blocks.
+     */
+    if (!inode->i_block[ext2_n_direct]) {
+        return recoverable;
+    }
+    auto block_size = image.get_block_size();
+    auto single_indirect_block = (unsigned *) image.get_block(inode->i_block[ext2_n_direct]);
+    for (auto i = 0u; recoverable && i < block_size && single_indirect_block[i]; ++i) {
+        if (block_bitmap.is_set(single_indirect_block[i])) {
+            recoverable = false;
+        }
+    }
+
+    /*
+     * Check the double indirect blocks.
+     */
+    if (!inode->i_block[ext2_n_direct + 1]) {
+        return recoverable;
+    }
+    auto double_indirect_block = (unsigned *) image.get_block(inode->i_block[ext2_n_direct + 1]);
+    for (auto i = 0u; recoverable && i < block_size && double_indirect_block[i]; ++i) {
+        single_indirect_block = (unsigned *) image.get_block(double_indirect_block[i]);
+        for (auto j = 0u; recoverable && j < block_size && single_indirect_block[j]; ++j) {
+            if (block_bitmap.is_set(single_indirect_block[j])) {
+                recoverable = false;
+            }
+        }
+    }
+
+    /*
+     * Check the triple indirect blocks.
+     */
+    if (!inode->i_block[ext2_n_direct + 2]) {
+        return recoverable;
+    }
+    auto triple_indirect_block = (unsigned *) image.get_block(inode->i_block[ext2_n_direct + 2]);
+    for (auto i = 0u; recoverable && i < block_size && triple_indirect_block[i]; ++i) {
+        double_indirect_block = (unsigned *) image.get_block(triple_indirect_block[i]);
+        for (auto j = 0u; recoverable && j < block_size && double_indirect_block[j]; ++j) {
+            single_indirect_block = (unsigned *) image.get_block(double_indirect_block[i]);
+            for (auto k = 0u; recoverable && k < block_size && single_indirect_block[k]; ++k) {
+                if (block_bitmap.is_set(single_indirect_block[k])) {
+                    recoverable = false;
+                }
+            }
+        }
+    }
+
+    return recoverable;
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
@@ -250,18 +320,10 @@ int main(int argc, char **argv)
                 return std::get<1>(a)->i_dtime > std::get<1>(b)->i_dtime;
     });
 
-    Bitmap block_bitmap = image.get_block_bitmap();
-    Bitmap inode_bitmap = image.get_inode_bitmap();
     for (auto &file : files_deleted) {
         struct ext2_inode *inode = std::get<1>(file);
-        auto n_blocks = inode->i_blocks/2;
-
-        auto n_direct = std::max(ext2_n_direct, n_blocks);
-        auto recoverable = true;
-        for (auto i = 0u; recoverable && i < n_direct; ++i) {
-            if (block_bitmap.is_set(inode->i_block[i])) {
-                recoverable = false;
-            }
+        if (is_recoverable(inode, image)) {
+            std::cout << std::get<0>(file) << '\n';
         }
     }
 
