@@ -315,13 +315,27 @@ int main(int argc, char **argv)
         auto blocks = get_blocks(inode, image);
         if (std::all_of(blocks.begin(), blocks.end(), [&](const auto &block) {
                     return !block_bitmap.is_set(block); })) {
+            struct ext2_super_block *super_block = image.get_super_block();
+
+            /*
+             * Undelete the inode
+             */
             inode->i_dtime = 0;
             image.get_inode_bitmap().set(std::get<2>(file));
+            --super_block->s_free_inodes_count;
+
+            /*
+             * Undelete the blocks
+             */
             std::for_each(blocks.begin(), blocks.end(), [&](const auto &block) {
                         block_bitmap.set(block); });
+            super_block->s_free_blocks_count -= blocks.size();
         }
     }
 
+    /*
+     * Print filename for each restored file, sorted by the filename.
+     */
     std::sort(files_deleted.begin(), files_deleted.end(),
             [](const auto &a, const auto &b) {
                 return std::get<0>(a) < std::get<0>(b); });
