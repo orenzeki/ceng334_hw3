@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
@@ -21,6 +22,14 @@
 constexpr auto base_offset = 1024u;
 constexpr auto ext2_block_size = 1024u;
 constexpr auto ext2_n_direct = 12u;
+constexpr auto ext2_lost_found_ino = 11u;
+constexpr auto ext2_super_magic = EXT2_SUPER_MAGIC;
+constexpr auto ext2_ft_reg_file = EXT2_FT_REG_FILE;
+constexpr auto ext2_s_ifreg = EXT2_S_IFREG;
+constexpr auto ext2_s_irusr = EXT2_S_IRUSR;
+
+constexpr auto recovered_rec_len = 16u;
+constexpr auto recovered_name_len = 6u;
 
 class Bitmap {
 public:
@@ -158,7 +167,7 @@ Image::Image(const char *path)
 
     first_block = image + base_offset;
     super_block = reinterpret_cast<struct ext2_super_block *>(first_block);
-    if (super_block->s_magic != EXT2_SUPER_MAGIC) {
+    if (super_block->s_magic != ext2_super_magic) {
         std::cerr << "Not an ext2 fs\n";
         throw std::runtime_error("Invalid filesystem");
     }
@@ -330,6 +339,13 @@ int main(int argc, char **argv)
             [](const auto &a, const auto &b) {
                 return std::get<1>(a)->i_dtime > std::get<1>(b)->i_dtime; });
 
+    /*
+     * Do what is required to mark the files as not deleted:
+     * Mark the inodes and blocks as allocated in bitmaps, set the free block
+     * and inode counts as appropriate in the superblock, undelete the inode
+     * by setting dtime to 0.
+     * Files that cannot be recovered will have their inode and blocks untouched.
+     */
     auto block_bitmap = image.get_block_bitmap();
     for (auto &file : files_deleted) {
         struct ext2_inode *inode = std::get<1>(file);
@@ -343,7 +359,10 @@ int main(int argc, char **argv)
             /*
              * Undelete the inode
              */
+            inode->i_mode = ext2_ft_reg_file | ext2_s_irusr;
+            inode->i_links_count = 1;
             inode->i_dtime = 0;
+
             image.get_inode_bitmap().set(std::get<2>(file));
             --super_block->s_free_inodes_count;
 
@@ -358,20 +377,67 @@ int main(int argc, char **argv)
     }
 
     /*
+     * Get rid of unrecoverable files.
+     */
+    files_deleted.erase(
+            std::remove_if(files_deleted.begin(), files_deleted.end(),
+                [](const auto &file) {
+                    return std::get<1>(file)->i_dtime != 0; }),
+            files_deleted.end());
+    /*
+     * We now have only restored files in our vector. We will call it
+     * files_restored from now on for clarity.
+     */
+    auto &files_restored = files_deleted;
+    /*
      * Print filename for each restored file, sorted by the filename.
      */
-    std::sort(files_deleted.begin(), files_deleted.end(),
+    std::sort(files_restored.begin(), files_restored.end(),
             [](const auto &a, const auto &b) {
                 return std::get<0>(a) < std::get<0>(b); });
-    std::for_each(files_deleted.begin(), files_deleted.end(),
+    std::for_each(files_restored.begin(), files_restored.end(),
             [](const auto &file) {
-                if (std::get<1>(file)->i_dtime == 0) {
-                    std::cout << std::get<0>(file) << '\n';
-                }});
+                std::cout << std::get<0>(file) << '\n'; });
+
+    /*
+     * Not implemented for more than 62 files for now.
+     */
+    if (files_restored.size() > 62) {
+        return ENOANO;
+    }
 
     /*
      * TODO: Create directory entries in lost+found.
+     * Note that we can assume that the directory entries that we place in the
+     * lost+found will be fixed size (16 bytes) according to the requirements
+     * document (which fixes the filename length). The only exceptions are the
+     * '.' and '..' entries, which are 12 bytes each.
+     * It also states that * the number of recovered files will be less than 100,
+     * so we may need * at most 2 blocks (~1600 bytes). The reserved blocks for
+     * lost+found are * more than enough for our purposes so we will not
+     * allocate any space.
      */
+    auto lost_found_inode = &image.get_inode_table()[ext2_lost_found_ino];
+    auto parent_dirent = reinterpret_cast<struct ext2_dir_entry *>(
+            image.get_block(lost_found_inode->i_block[0]) + 12);
+    parent_dirent->rec_len = 12;
+
+    auto curr_dirent = reinterpret_cast<struct ext2_dir_entry *>(
+            image.get_block(lost_found_inode->i_block[0]) + 24);
+    for (const auto &file : files_restored) {
+        curr_dirent->inode = std::get<2>(file);
+        curr_dirent->rec_len = recovered_rec_len;
+        curr_dirent->name_len = recovered_name_len;
+        curr_dirent->file_type = ext2_ft_reg_file;
+        std::memcpy(curr_dirent->name, std::get<0>(file).c_str(), recovered_name_len + 1);
+
+        /*
+         * XXX: Temporary hack
+         * sizeof(struct ext2_dir_entry) == 8, however we use 16 bytes for it.
+         * So, curr_dirent += 2 will carry us to the next dir entry.
+         */
+        curr_dirent += 2;
+    }
 
     return 0;
 }
