@@ -171,7 +171,7 @@ Image::Image(const char *path)
         std::cerr << "Not an ext2 fs\n";
         throw std::runtime_error("Invalid filesystem");
     }
-    block_size = 1024 << super_block->s_log_block_size;
+    block_size = ext2_block_size << super_block->s_log_block_size;
     group_desc = reinterpret_cast<struct ext2_group_desc *>(first_block + block_size);
 
     close(fd);
@@ -410,7 +410,6 @@ int main(int argc, char **argv)
     }
 
     /*
-     * TODO: Create directory entries in lost+found.
      * Note that we can assume that the directory entries that we place in the
      * lost+found will be fixed size (16 bytes) according to the requirements
      * document (which fixes the filename length). The only exceptions are the
