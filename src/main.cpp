@@ -30,6 +30,10 @@ constexpr auto ext2_s_irusr = EXT2_S_IRUSR;
 
 constexpr auto recovered_rec_len = 16u;
 constexpr auto recovered_name_len = 6u;
+/*
+ * We can fit 62 directory entries in one block of lost+found.
+ */
+constexpr auto dir_entry_limit = 62;
 
 class Bitmap {
 public:
@@ -403,13 +407,10 @@ int main(int argc, char **argv)
                 std::cout << std::get<0>(file) << '\n'; });
 
     /*
-     * Not implemented for more than 62 files for now.
+     * Create directory entries in lost+found.
      */
-    if (files_restored.size() > 62) {
-        return ENOANO;
-    }
-
     if (files_restored.size() != 0) {
+        auto n_restored = 0;
         /*
          * Note that we can assume that the directory entries that we place in the
          * lost+found will be fixed size (16 bytes) according to the requirements
@@ -429,6 +430,38 @@ int main(int argc, char **argv)
         auto curr_dirent = reinterpret_cast<struct ext2_dir_entry *>(
                 image.get_block(lost_found_inode->i_block[0]) + dir_len);
         for (const auto &file : files_restored) {
+            curr_dirent->inode = std::get<2>(file);
+            dir_len += curr_dirent->rec_len = recovered_rec_len;
+            curr_dirent->name_len = recovered_name_len;
+            curr_dirent->file_type = ext2_ft_reg_file;
+            std::memcpy(curr_dirent->name, std::get<0>(file).c_str(), recovered_name_len + 1);
+
+            /*
+             * XXX: Temporary hack
+             * sizeof(struct ext2_dir_entry) == 8, however we use 16 bytes for it.
+             * So, curr_dirent += 2 will carry us to the next dir entry.
+             */
+            curr_dirent += 2;
+
+            ++n_restored;
+            if (n_restored == dir_entry_limit) {
+                break;
+            }
+        }
+        curr_dirent[-2].rec_len = image.get_block_size() - dir_len + 16;
+    }
+
+    if (files_restored.size() > dir_entry_limit) {
+        /*
+         * XXX: This code path is not tested. Moreover, it smells.
+         */
+        auto lost_found_inode = &image.get_inode_table()[ext2_lost_found_ino];
+        auto dir_len = 0;
+        auto curr_dirent = reinterpret_cast<struct ext2_dir_entry *>(
+                image.get_block(lost_found_inode->i_block[1]) + dir_len);
+        for (auto it = files_restored.begin() + dir_entry_limit;
+                it != files_restored.end(); ++it) {
+            const auto &file = *it;
             curr_dirent->inode = std::get<2>(file);
             dir_len += curr_dirent->rec_len = recovered_rec_len;
             curr_dirent->name_len = recovered_name_len;
