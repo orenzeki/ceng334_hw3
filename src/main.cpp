@@ -374,8 +374,8 @@ int main(int argc, char **argv)
             std::for_each(blocks.begin(), blocks.end(),
                     [&](const auto &block) {
                         block_bitmap.set(block); });
-            super_block->s_free_blocks_count -= blocks.size();
-            group_desc->bg_free_blocks_count -= blocks.size();
+            super_block->s_free_blocks_count -= inode->i_blocks;
+            group_desc->bg_free_blocks_count -= inode->i_blocks;
         }
     }
 
