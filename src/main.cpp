@@ -102,7 +102,7 @@ public:
      * numbering starts at 1 and the first block is the superblock.
      */
 
-    auto get_block_size() const;
+    unsigned get_block_size() const;
     /*
      * Use this for raw block access.
      */
@@ -176,7 +176,7 @@ Image::Image(const char *path)
         throw std::runtime_error("Invalid filesystem");
     }
     block_size = ext2_block_size << super_block->s_log_block_size;
-    group_desc = reinterpret_cast<struct ext2_group_desc *>(first_block + block_size);
+    group_desc = reinterpret_cast<struct ext2_group_desc *>(first_block + ext2_block_size);
 
     close(fd);
 }
@@ -186,7 +186,7 @@ Image::~Image()
     munmap(image, image_size);
 }
 
-auto Image::get_block_size() const
+unsigned Image::get_block_size() const
 {
     return block_size;
 }
