@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS=-Wall -std=c++14 -O0 -ggdb
+CXXFLAGS=-Wall -std=c++14 -O0 -ggdb -fno-strict-aliasing
 
 .PHONY:
 all: recover
