@@ -409,42 +409,41 @@ int main(int argc, char **argv)
         return ENOANO;
     }
 
-    /*
-     * Note that we can assume that the directory entries that we place in the
-     * lost+found will be fixed size (16 bytes) according to the requirements
-     * document (which fixes the filename length). The only exceptions are the
-     * '.' and '..' entries, which are 12 bytes each.
-     * It also states that * the number of recovered files will be less than 100,
-     * so we may need * at most 2 blocks (~1600 bytes). The reserved blocks for
-     * lost+found are * more than enough for our purposes so we will not
-     * allocate any space.
-     */
-    auto lost_found_inode = &image.get_inode_table()[ext2_lost_found_ino];
-    auto parent_dirent = reinterpret_cast<struct ext2_dir_entry *>(
-            image.get_block(lost_found_inode->i_block[0]) + 12);
-    parent_dirent->rec_len = 12;
-
-    auto dir_len = 24;
-    auto curr_dirent = reinterpret_cast<struct ext2_dir_entry *>(
-            image.get_block(lost_found_inode->i_block[0]) + dir_len);
-    for (const auto &file : files_restored) {
-        curr_dirent->inode = std::get<2>(file);
-        dir_len += curr_dirent->rec_len = recovered_rec_len;
-        curr_dirent->name_len = recovered_name_len;
-        curr_dirent->file_type = ext2_ft_reg_file;
-        std::memcpy(curr_dirent->name, std::get<0>(file).c_str(), recovered_name_len + 1);
-
+    if (files_restored.size() != 0) {
         /*
-         * XXX: Temporary hack
-         * sizeof(struct ext2_dir_entry) == 8, however we use 16 bytes for it.
-         * So, curr_dirent += 2 will carry us to the next dir entry.
+         * Note that we can assume that the directory entries that we place in the
+         * lost+found will be fixed size (16 bytes) according to the requirements
+         * document (which fixes the filename length). The only exceptions are the
+         * '.' and '..' entries, which are 12 bytes each.
+         * It also states that * the number of recovered files will be less than 100,
+         * so we may need * at most 2 blocks (~1600 bytes). The reserved blocks for
+         * lost+found are * more than enough for our purposes so we will not
+         * allocate any space.
          */
-        curr_dirent += 2;
+        auto lost_found_inode = &image.get_inode_table()[ext2_lost_found_ino];
+        auto parent_dirent = reinterpret_cast<struct ext2_dir_entry *>(
+                image.get_block(lost_found_inode->i_block[0]) + 12);
+        parent_dirent->rec_len = 12;
+
+        auto dir_len = 24;
+        auto curr_dirent = reinterpret_cast<struct ext2_dir_entry *>(
+                image.get_block(lost_found_inode->i_block[0]) + dir_len);
+        for (const auto &file : files_restored) {
+            curr_dirent->inode = std::get<2>(file);
+            dir_len += curr_dirent->rec_len = recovered_rec_len;
+            curr_dirent->name_len = recovered_name_len;
+            curr_dirent->file_type = ext2_ft_reg_file;
+            std::memcpy(curr_dirent->name, std::get<0>(file).c_str(), recovered_name_len + 1);
+
+            /*
+             * XXX: Temporary hack
+             * sizeof(struct ext2_dir_entry) == 8, however we use 16 bytes for it.
+             * So, curr_dirent += 2 will carry us to the next dir entry.
+             */
+            curr_dirent += 2;
+        }
+        curr_dirent[-2].rec_len = image.get_block_size() - dir_len + 16;
     }
-    /*
-     * XXX: Temporary hack
-     */
-    curr_dirent[-2].rec_len = image.get_block_size() - dir_len + 16;
 
     return 0;
 }
