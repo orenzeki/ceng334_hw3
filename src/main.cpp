@@ -286,10 +286,12 @@ int main(int argc, char **argv)
      * Output (for each deleted file):
      * filename deletion_time num_blocks
      */
-    for (const auto &file : files_deleted) {
-        std::cout << std::get<0>(file) << ' ' << std::get<1>(file)->i_dtime <<
-            ' ' << std::get<1>(file)->i_blocks/2 << '\n';
-    }
+    std::for_each(files_deleted.begin(), files_deleted.end(),
+            [](const auto &file) {
+                std::cout <<
+                std::get<0>(file) << ' ' <<
+                std::get<1>(file)->i_dtime << ' ' <<
+                std::get<1>(file)->i_blocks/2 << '\n'; });
 
     /*
      * We sort the vector according to the deletion time
@@ -307,14 +309,16 @@ int main(int argc, char **argv)
      */
     std::sort(files_deleted.begin(), files_deleted.end(),
             [](const auto &a, const auto &b) {
-            return std::get<1>(a)->i_dtime > std::get<1>(b)->i_dtime; });
+                return std::get<1>(a)->i_dtime > std::get<1>(b)->i_dtime; });
 
     auto block_bitmap = image.get_block_bitmap();
     for (auto &file : files_deleted) {
         struct ext2_inode *inode = std::get<1>(file);
         auto blocks = get_blocks(inode, image);
-        if (std::all_of(blocks.begin(), blocks.end(), [&](const auto &block) {
-                    return !block_bitmap.is_set(block); })) {
+        if (std::all_of(blocks.begin(), blocks.end(),
+                    [&](const auto &block) {
+                        return !block_bitmap.is_set(block); }))
+        {
             struct ext2_super_block *super_block = image.get_super_block();
 
             /*
@@ -327,7 +331,8 @@ int main(int argc, char **argv)
             /*
              * Undelete the blocks
              */
-            std::for_each(blocks.begin(), blocks.end(), [&](const auto &block) {
+            std::for_each(blocks.begin(), blocks.end(),
+                    [&](const auto &block) {
                         block_bitmap.set(block); });
             super_block->s_free_blocks_count -= blocks.size();
         }
@@ -339,11 +344,15 @@ int main(int argc, char **argv)
     std::sort(files_deleted.begin(), files_deleted.end(),
             [](const auto &a, const auto &b) {
                 return std::get<0>(a) < std::get<0>(b); });
-    for (const auto &file : files_deleted) {
-        if (std::get<1>(file)->i_dtime == 0) {
-            std::cout << std::get<0>(file) << '\n';
-        }
-    }
+    std::for_each(files_deleted.begin(), files_deleted.end(),
+            [](const auto &file) {
+                if (std::get<1>(file)->i_dtime == 0) {
+                    std::cout << std::get<0>(file) << '\n';
+                }});
+
+    /*
+     * TODO: Create directory entries in lost+found.
+     */
 
     return 0;
 }
