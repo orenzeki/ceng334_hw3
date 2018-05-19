@@ -134,21 +134,21 @@ Image::Image(const char *path)
         perror("open");
         throw std::runtime_error("Cannot open file");
     }
-    image = (uint8_t *) mmap(NULL, image_size, PROT_READ | PROT_WRITE,
-            MAP_SHARED, fd, 0);
-    if (image == (void *) -1) {
+    image = static_cast<uint8_t *>(mmap(NULL, image_size, PROT_READ | PROT_WRITE,
+            MAP_SHARED, fd, 0));
+    if (image == reinterpret_cast<void *>(-1)) {
         perror("mmap");
         throw std::runtime_error("Cannot map file");
     }
 
     first_block = image + base_offset;
-    super_block = (struct ext2_super_block *) first_block;
+    super_block = reinterpret_cast<struct ext2_super_block *>(first_block);
     if (super_block->s_magic != EXT2_SUPER_MAGIC) {
         std::cerr << "Not an ext2 fs\n";
         throw std::runtime_error("Invalid filesystem");
     }
     block_size = 1024 << super_block->s_log_block_size;
-    group_desc = (struct ext2_group_desc *) (first_block + block_size);
+    group_desc = reinterpret_cast<struct ext2_group_desc *>(first_block + block_size);
 
     close(fd);
 }
@@ -193,7 +193,7 @@ Bitmap Image::get_inode_bitmap() const
 
 struct ext2_inode *Image::get_inode_table() const
 {
-    return (struct ext2_inode *) get_block(group_desc->bg_inode_table);
+    return reinterpret_cast<struct ext2_inode *>(get_block(group_desc->bg_inode_table));
 }
 
 auto find_deleted_files(const Image &image)
@@ -234,7 +234,7 @@ auto get_blocks(struct ext2_inode *inode, const Image &image)
         return blocks;
     }
     auto block_size = image.get_block_size();
-    auto single_indirect_block = (unsigned *) image.get_block(inode->i_block[ext2_n_direct]);
+    auto single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct]));
     for (auto i = 0u; i < block_size && single_indirect_block[i]; ++i) {
         blocks.push_back(single_indirect_block[i]);
     }
@@ -245,9 +245,9 @@ auto get_blocks(struct ext2_inode *inode, const Image &image)
     if (!inode->i_block[ext2_n_direct + 1]) {
         return blocks;
     }
-    auto double_indirect_block = (unsigned *) image.get_block(inode->i_block[ext2_n_direct + 1]);
+    auto double_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct + 1]));
     for (auto i = 0u; i < block_size && double_indirect_block[i]; ++i) {
-        single_indirect_block = (unsigned *) image.get_block(double_indirect_block[i]);
+        single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(double_indirect_block[i]));
         for (auto j = 0u; j < block_size && single_indirect_block[j]; ++j) {
             blocks.push_back(single_indirect_block[j]);
         }
@@ -259,11 +259,11 @@ auto get_blocks(struct ext2_inode *inode, const Image &image)
     if (!inode->i_block[ext2_n_direct + 2]) {
         return blocks;
     }
-    auto triple_indirect_block = (unsigned *) image.get_block(inode->i_block[ext2_n_direct + 2]);
+    auto triple_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct + 2]));
     for (auto i = 0u; i < block_size && triple_indirect_block[i]; ++i) {
-        double_indirect_block = (unsigned *) image.get_block(triple_indirect_block[i]);
+        double_indirect_block = reinterpret_cast<unsigned *>(image.get_block(triple_indirect_block[i]));
         for (auto j = 0u; j < block_size && double_indirect_block[j]; ++j) {
-            single_indirect_block = (unsigned *) image.get_block(double_indirect_block[i]);
+            single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(double_indirect_block[i]));
             for (auto k = 0u; k < block_size && single_indirect_block[k]; ++k) {
                 blocks.push_back(single_indirect_block[k]);
             }
