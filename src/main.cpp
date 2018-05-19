@@ -50,16 +50,31 @@ Bitmap::Bitmap(uint8_t *bmap, unsigned block_size) :
  */
 bool Bitmap::is_set(unsigned bit) const
 {
+    /*
+     * XXX: Temporary hack
+     */
+    --bit;
+
     return bmap[bit / nbits] & (1 << (bit % nbits));
 }
 
 void Bitmap::set(unsigned bit) const
 {
+    /*
+     * XXX: Temporary hack
+     */
+    --bit;
+
     bmap[bit / nbits] |= (1 << (bit % nbits));
 }
 
 void Bitmap::clear(unsigned bit) const
 {
+    /*
+     * XXX: Temporary hack
+     */
+    --bit;
+
     bmap[bit / nbits] &= ~(1 << (bit % nbits));
 }
 
@@ -193,16 +208,20 @@ Bitmap Image::get_inode_bitmap() const
 
 struct ext2_inode *Image::get_inode_table() const
 {
-    return reinterpret_cast<struct ext2_inode *>(get_block(group_desc->bg_inode_table));
+    return reinterpret_cast<struct ext2_inode *>(get_block(group_desc->bg_inode_table))
+        /*
+         * XXX: Temporary hack
+         */
+        - 1;
 }
 
 auto find_deleted_files(const Image &image)
 {
     std::vector<std::tuple<std::string, struct ext2_inode *, unsigned>> files_deleted;
     struct ext2_inode *inodes = image.get_inode_table();
-    struct ext2_super_block *super = image.get_super_block();
+    const struct ext2_super_block *super = image.get_super_block();
     auto n_deleted = 0;
-    for (auto i = super->s_first_ino; i < super->s_inodes_per_group; ++i) {
+    for (auto i = super->s_first_ino; i <= super->s_inodes_per_group; ++i) {
         if (inodes[i].i_dtime) {
             std::ostringstream filename_ss;
             filename_ss << "file";
