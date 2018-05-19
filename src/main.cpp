@@ -355,16 +355,18 @@ int main(int argc, char **argv)
                         return !block_bitmap.is_set(block); }))
         {
             struct ext2_super_block *super_block = image.get_super_block();
+            struct ext2_group_desc *group_desc = image.get_group_desc();
 
             /*
              * Undelete the inode
              */
-            inode->i_mode = ext2_ft_reg_file | ext2_s_irusr;
+            inode->i_mode = ext2_s_ifreg | ext2_s_irusr;
             inode->i_links_count = 1;
             inode->i_dtime = 0;
 
             image.get_inode_bitmap().set(std::get<2>(file));
             --super_block->s_free_inodes_count;
+            --group_desc->bg_free_inodes_count;
 
             /*
              * Undelete the blocks
@@ -373,6 +375,7 @@ int main(int argc, char **argv)
                     [&](const auto &block) {
                         block_bitmap.set(block); });
             super_block->s_free_blocks_count -= blocks.size();
+            group_desc->bg_free_blocks_count -= blocks.size();
         }
     }
 
@@ -422,11 +425,12 @@ int main(int argc, char **argv)
             image.get_block(lost_found_inode->i_block[0]) + 12);
     parent_dirent->rec_len = 12;
 
+    auto dir_len = 24;
     auto curr_dirent = reinterpret_cast<struct ext2_dir_entry *>(
-            image.get_block(lost_found_inode->i_block[0]) + 24);
+            image.get_block(lost_found_inode->i_block[0]) + dir_len);
     for (const auto &file : files_restored) {
         curr_dirent->inode = std::get<2>(file);
-        curr_dirent->rec_len = recovered_rec_len;
+        dir_len += curr_dirent->rec_len = recovered_rec_len;
         curr_dirent->name_len = recovered_name_len;
         curr_dirent->file_type = ext2_ft_reg_file;
         std::memcpy(curr_dirent->name, std::get<0>(file).c_str(), recovered_name_len + 1);
@@ -438,6 +442,10 @@ int main(int argc, char **argv)
          */
         curr_dirent += 2;
     }
+    /*
+     * XXX: Temporary hack
+     */
+    curr_dirent[-2].rec_len = image.get_block_size() - dir_len + 16;
 
     return 0;
 }
