@@ -251,53 +251,83 @@ auto find_deleted_files(const Image &image)
  */
 auto get_blocks(struct ext2_inode *inode, const Image &image)
 {
+    const auto block_size = image.get_block_size();
+
     std::vector<unsigned> blocks;
     /*
      * Get the direct blocks.
      */
-    for (auto i = 0u; i < ext2_n_direct && inode->i_block[i]; ++i) {
-        blocks.push_back(inode->i_block[i]);
+    auto blocks_remaining = inode->i_blocks / 2;
+    for (auto i = 0u; i < ext2_n_direct && blocks_remaining > 0; ++i) {
+        const auto &block = inode->i_block[i];
+        if (block) {
+            blocks.push_back(block);
+            --blocks_remaining;
+        }
     }
 
     /*
      * Check the single indirect blocks.
      */
-    if (!inode->i_block[ext2_n_direct]) {
+    if (blocks_remaining == 0) {
         return blocks;
     }
-    auto block_size = image.get_block_size();
-    auto single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct]));
-    for (auto i = 0u; i < block_size && single_indirect_block[i]; ++i) {
-        blocks.push_back(single_indirect_block[i]);
+    if (inode->i_block[ext2_n_direct]) {
+        auto single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct]));
+        for (auto i = 0u; i < block_size && blocks_remaining > 0; ++i) {
+            const auto &block = single_indirect_block[i];
+            if (block) {
+                blocks.push_back(block);
+                --blocks_remaining;
+            }
+        }
     }
 
     /*
      * Check the double indirect blocks.
      */
-    if (!inode->i_block[ext2_n_direct + 1]) {
+    if (blocks_remaining == 0) {
         return blocks;
     }
-    auto double_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct + 1]));
-    for (auto i = 0u; i < block_size && double_indirect_block[i]; ++i) {
-        single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(double_indirect_block[i]));
-        for (auto j = 0u; j < block_size && single_indirect_block[j]; ++j) {
-            blocks.push_back(single_indirect_block[j]);
+    if (inode->i_block[ext2_n_direct + 1]) {
+        auto double_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct + 1]));
+        for (auto i = 0u; i < block_size && blocks_remaining > 0; ++i) {
+            if (double_indirect_block[i]) {
+                auto single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(double_indirect_block[i]));
+                for (auto j = 0u; j < block_size && blocks_remaining > 0; ++j) {
+                    const auto &block = single_indirect_block[j];
+                    if (block) {
+                        blocks.push_back(block);
+                        --blocks_remaining;
+                    }
+                }
+            }
         }
     }
 
     /*
      * Check the triple indirect blocks.
      */
-    if (!inode->i_block[ext2_n_direct + 2]) {
+    if (blocks_remaining == 0) {
         return blocks;
     }
-    auto triple_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct + 2]));
-    for (auto i = 0u; i < block_size && triple_indirect_block[i]; ++i) {
-        double_indirect_block = reinterpret_cast<unsigned *>(image.get_block(triple_indirect_block[i]));
-        for (auto j = 0u; j < block_size && double_indirect_block[j]; ++j) {
-            single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(double_indirect_block[i]));
-            for (auto k = 0u; k < block_size && single_indirect_block[k]; ++k) {
-                blocks.push_back(single_indirect_block[k]);
+    if (inode->i_block[ext2_n_direct + 2]) {
+        auto triple_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct + 2]));
+        for (auto i = 0u; i < block_size && blocks_remaining > 0; ++i) {
+            if (triple_indirect_block[i]) {
+                auto double_indirect_block = reinterpret_cast<unsigned *>(image.get_block(triple_indirect_block[i]));
+                for (auto j = 0u; j < block_size && blocks_remaining > 0; ++j) {
+                    if (double_indirect_block[j]) {
+                        auto single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(double_indirect_block[j]));
+                        for (auto k = 0u; k < block_size && blocks_remaining > 0; ++k) {
+                            const auto &block = single_indirect_block[k];
+                            if (block) {
+                                blocks.push_back(single_indirect_block[k]);
+                                --blocks_remaining;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
