@@ -349,11 +349,11 @@ int main(int argc, char **argv)
      * filename deletion_time num_blocks
      */
     std::for_each(files_deleted.begin(), files_deleted.end(),
-            [](const auto &file) {
+            [&](const auto &file) {
                 std::cout <<
                 std::get<0>(file) << ' ' <<
                 std::get<1>(file)->i_dtime << ' ' <<
-                std::get<1>(file)->i_blocks/2 << '\n'; });
+                std::get<1>(file)->i_blocks/(image.get_block_size()/512) << '\n'; });
 
     /*
      * We sort the vector according to the deletion time
