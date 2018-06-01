@@ -295,6 +295,7 @@ auto get_blocks(struct ext2_inode *inode, const Image &image)
         auto double_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct + 1]));
         for (auto i = 0u; i < block_size && blocks_remaining > 0; ++i) {
             if (double_indirect_block[i]) {
+                blocks.push_back(double_indirect_block[i]);
                 auto single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(double_indirect_block[i]));
                 for (auto j = 0u; j < block_size && blocks_remaining > 0; ++j) {
                     const auto &block = single_indirect_block[j];
@@ -318,9 +319,11 @@ auto get_blocks(struct ext2_inode *inode, const Image &image)
         auto triple_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct + 2]));
         for (auto i = 0u; i < block_size && blocks_remaining > 0; ++i) {
             if (triple_indirect_block[i]) {
+                blocks.push_back(triple_indirect_block[i]);
                 auto double_indirect_block = reinterpret_cast<unsigned *>(image.get_block(triple_indirect_block[i]));
                 for (auto j = 0u; j < block_size && blocks_remaining > 0; ++j) {
                     if (double_indirect_block[j]) {
+                        blocks.push_back(double_indirect_block[i]);
                         auto single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(double_indirect_block[j]));
                         for (auto k = 0u; k < block_size && blocks_remaining > 0; ++k) {
                             const auto &block = single_indirect_block[k];
