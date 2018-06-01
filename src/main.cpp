@@ -273,6 +273,7 @@ auto get_blocks(struct ext2_inode *inode, const Image &image)
         return blocks;
     }
     if (inode->i_block[ext2_n_direct]) {
+        blocks.push_back(inode->i_block[ext2_n_direct]);
         auto single_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct]));
         for (auto i = 0u; i < block_size && blocks_remaining > 0; ++i) {
             const auto &block = single_indirect_block[i];
@@ -290,6 +291,7 @@ auto get_blocks(struct ext2_inode *inode, const Image &image)
         return blocks;
     }
     if (inode->i_block[ext2_n_direct + 1]) {
+        blocks.push_back(inode->i_block[ext2_n_direct + 1]);
         auto double_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct + 1]));
         for (auto i = 0u; i < block_size && blocks_remaining > 0; ++i) {
             if (double_indirect_block[i]) {
@@ -312,6 +314,7 @@ auto get_blocks(struct ext2_inode *inode, const Image &image)
         return blocks;
     }
     if (inode->i_block[ext2_n_direct + 2]) {
+        blocks.push_back(inode->i_block[ext2_n_direct + 2]);
         auto triple_indirect_block = reinterpret_cast<unsigned *>(image.get_block(inode->i_block[ext2_n_direct + 2]));
         for (auto i = 0u; i < block_size && blocks_remaining > 0; ++i) {
             if (triple_indirect_block[i]) {
@@ -408,8 +411,8 @@ int main(int argc, char **argv)
             std::for_each(blocks.begin(), blocks.end(),
                     [&](const auto &block) {
                         block_bitmap.set(block); });
-            super_block->s_free_blocks_count -= inode->i_blocks;
-            group_desc->bg_free_blocks_count -= inode->i_blocks;
+            super_block->s_free_blocks_count -= blocks.size();
+            group_desc->bg_free_blocks_count -= blocks.size();
         }
     }
 
