@@ -21,6 +21,7 @@
 
 constexpr auto base_offset = 1024u;
 constexpr auto ext2_block_size = 1024u;
+constexpr auto ext2_sector_size = 512u;
 constexpr auto ext2_n_direct = 12u;
 constexpr auto ext2_lost_found_ino = 11u;
 constexpr auto ext2_super_magic = EXT2_SUPER_MAGIC;
@@ -258,7 +259,7 @@ auto get_blocks(struct ext2_inode *inode, const Image &image)
     /*
      * Get the direct blocks.
      */
-    auto blocks_remaining = inode->i_size/image.get_block_size();
+    auto blocks_remaining = inode->i_blocks/(image.get_block_size()/ext2_sector_size);
     for (auto i = 0u; i < ext2_n_direct && blocks_remaining > 0; ++i) {
         const auto &block = inode->i_block[i];
         if (block) {
@@ -366,7 +367,7 @@ int main(int argc, char **argv)
                 std::cout <<
                 std::get<0>(file) << ' ' <<
                 std::get<1>(file)->i_dtime << ' ' <<
-                std::get<1>(file)->i_blocks/(image.get_block_size()/512) << '\n'; });
+                std::get<1>(file)->i_blocks/(image.get_block_size()/ext2_sector_size) << '\n'; });
 
     /*
      * We sort the vector according to the deletion time
